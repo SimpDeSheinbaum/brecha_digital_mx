@@ -1,0 +1,23 @@
+# Entornos Virtuales de Python
+venv/
+env/
+ENV/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de Datos Pesados / Temporales (Se generan vía ETL)
+data/mexico_estados.json
+data/mexico_municipios.json
+*.csv
+*.xlsx
+
+# Configuración de Entorno y Credenciales PostgreSQL
+.env
+.vscode/
+.DS_Store
+
+# Artefactos de Streamlit
+.streamlit/secrets.toml
