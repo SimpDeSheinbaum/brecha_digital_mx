@@ -1,0 +1,131 @@
+import os
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import pandas as pd
+import numpy as np
+import joblib
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+# --- FUNCIÓN DE ENTROPÍA ---
+def calcular_entropia_shannon(df, feature_cols):
+    data = df[feature_cols].copy()
+    data_norm = (data - data.min()) / (data.max() - data.min() + 1e-9)
+    p_ij = data_norm.div(data_norm.sum(axis=0), axis=1) + 1e-9
+    k = 1.0 / np.log(len(df))
+    E_j = -k * (p_ij * np.log(p_ij)).sum(axis=0)
+    d_j = 1.0 - E_j
+    w_j = d_j / d_j.sum()
+    return (data_norm * w_j).sum(axis=1)
+
+# 1. Rutas de los archivos
+ruta_geojson = os.path.join("data", "mexico_municipios.json")
+ruta_csv = os.path.join("data", "censo_2020_processed.csv")
+ruta_modelo = os.path.join("models", "best_xgboost_model.pkl")
+ruta_salida_mapa = os.path.join("data", "mexico_municipios_con_predicciones.json")
+ruta_imagen = os.path.join("data", "mapa_brecha_digital_mexico.png")
+
+print("⏳ Cargando la base de datos censal completa y el GeoJSON nacional...")
+df_censo = pd.read_csv(ruta_csv, dtype={'cvegeo': str})
+df_censo["cvegeo"] = df_censo["cvegeo"].str.zfill(5)
+
+gdf_municipios = gpd.read_file(ruta_geojson)
+gdf_municipios["CVEGEO"] = gdf_municipios["CVEGEO"].astype(str).str.zfill(5)
+
+# 2. Ingeniería de características
+print("⚙️ Calculando Entropía de Shannon y PCA para todo el territorio nacional...")
+cols_tic = ['pct_vph_inter', 'pct_vph_pc', 'pct_vph_cel']
+df_censo['score_entropia'] = calcular_entropia_shannon(df_censo, cols_tic)
+
+scaler = StandardScaler()
+scaled_data = scaler.fit_transform(df_censo[cols_tic].fillna(0))
+pca = PCA(n_components=2, random_state=42)
+pca_features = pca.fit_transform(scaled_data)
+df_censo['pca_comp_1'] = pca_features[:, 0]
+df_censo['pca_comp_2'] = pca_features[:, 1]
+
+X_full = df_censo[['pct_vph_inter', 'pct_vph_pc', 'score_entropia', 'pca_comp_1', 'pca_comp_2']]
+
+# 3. Cargar el modelo optimizado
+if not os.path.exists(ruta_modelo):
+    raise FileNotFoundError(f"❌ No se encontró el modelo en {ruta_modelo}. Asegúrate de haberlo guardado desde optimize.py.")
+
+print(f"🤖 Cargando el modelo XGBoost optimizado desde: {ruta_modelo}...")
+modelo_cargado = joblib.load(ruta_modelo)
+
+# 4. Predicciones
+print("🔮 Generando predicciones de brecha digital para el 100% de los municipios...")
+predicciones = modelo_cargado.predict(X_full)
+
+df_preds = pd.DataFrame({
+    'CVEGEO': df_censo['cvegeo'],
+    'clase_predicha': predicciones.astype(int)
+})
+
+# 5. Cruce espacial
+print("🔄 Cruzando las geometrías del GeoJSON con las predicciones...")
+gdf_final = gdf_municipios.merge(df_preds, on="CVEGEO", how="inner")
+
+os.makedirs("data", exist_ok=True)
+gdf_final.to_file(ruta_salida_mapa, driver="GeoJSON")
+
+# 6. Renderizado del mapa con fondo #eef9ff
+print("🎨 Dibujando y exportando el mapa con fondo personalizado...")
+fig, ax = plt.subplots(1, 1, figsize=(16, 12))
+
+# Aplicar el fondo #eef9ff a la figura y al mapa
+fig.patch.set_facecolor('#eef9ff')
+ax.set_facecolor('#eef9ff')
+
+gdf_final.plot(
+    column="clase_predicha",
+    cmap="YlOrRd",
+    categorical=True,
+    legend=False,
+    ax=ax,
+    edgecolor="black",
+    linewidth=0.02
+)
+
+# Título ajustado
+plt.title(
+    "Clasificación Municipal: Brecha Digital en México (XGBoost Optimizado)", 
+    fontsize=22, 
+    fontweight="bold", 
+    y=0.96
+)
+
+# Leyenda categórica abajo a la izquierda con fondo blanco para mayor legibilidad
+import matplotlib as mpl
+cmap = mpl.colormaps['YlOrRd']
+colors = [cmap(0.1), cmap(0.5), cmap(0.9)]
+
+legend_labels = [
+    '0: Bajo', 
+    '1: Medio', 
+    '2: Alto'
+]
+patches = [mpatches.Patch(color=colors[i], label=legend_labels[i]) for i in range(3)]
+
+legend = ax.legend(
+    handles=patches, 
+    title="Niveles de Brecha", 
+    loc="lower left", 
+    bbox_to_anchor=(0.03, 0.03),
+    ncol=1, 
+    fontsize=16, 
+    title_fontsize=18,
+    frameon=True
+)
+legend.get_frame().set_facecolor('white')
+legend.get_frame().set_edgecolor('#cccccc')
+
+plt.axis("off")
+fig.subplots_adjust(top=0.9, bottom=0.05, left=0.05, right=0.95)
+
+# Guardar con el fondo personalizado
+plt.savefig(ruta_imagen, dpi=300, facecolor=fig.get_facecolor(), edgecolor='none')
+print(f"✅ ¡Listo! Mapa con fondo personalizado guardado en: {ruta_imagen}")
+
+plt.show()
