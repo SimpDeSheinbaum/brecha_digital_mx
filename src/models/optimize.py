@@ -61,7 +61,13 @@ def optimize_xgboost_for_high_recall(X: pd.DataFrame, y: pd.Series):
     print(f"\n✅ Mejores Hiperparámetros Encontrados:")
     for param, val in grid_search.best_params_.items():
         print(f"   • {param}: {val}")
-        
+
+    # 5.5 Guardar modelo para generar mapa
+    ruta_modelo = os.path.join("models", "best_xgboost_model.pkl")
+    os.makedirs("models", exist_ok=True)
+    joblib.dump(best_model, ruta_modelo)
+    print(f"💾 Modelo optimizado guardado exitosamente en: {ruta_modelo}")
+    
     # 6. Evaluación sobre el Conjunto de Prueba Prístino (Test)
     y_pred = best_model.predict(X_test)
     
