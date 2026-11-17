@@ -1,0 +1,54 @@
+import os
+import joblib
+import matplotlib.pyplot as plt
+
+# 1. Cargar el modelo guardado
+ruta_modelo = os.path.join("models", "best_xgboost_model.pkl")
+modelo = joblib.load(ruta_modelo)
+
+# 2. Definir nombres legibles para las características
+features_nombres = [
+    '% Viviendas con Internet', 
+    '% Viviendas con PC', 
+    'Entropía de Shannon (Ponderación)', 
+    'PCA Componente 1', 
+    'PCA Componente 2'
+]
+
+importances = modelo.feature_importances_
+
+# 3. Crear el gráfico con fondo personalizado (#eef9ff)
+fig, ax = plt.subplots(figsize=(16, 11))
+
+# Establecer el color de fondo de la figura y del área del gráfico
+fig.patch.set_facecolor('#eef9ff')
+ax.set_facecolor('#eef9ff')
+
+bars = ax.barh(features_nombres, importances, color='#1f77b4', edgecolor='black', linewidth=0.6)
+ax.set_xlabel('Importancia Relativa (Gain)', fontsize=18, fontweight='bold')
+ax.set_title('Importancia de Variables en el Modelo XGBoost', fontsize=22, fontweight='bold', pad=15)
+ax.invert_yaxis() # Invertir para que la más importante quede arriba
+
+# Ajustar tamaño de las etiquetas del eje Y para que los textos multilínea se lean perfectamente
+ax.tick_params(axis='y', labelsize=20)
+ax.tick_params(axis='x', labelsize=16)
+
+# Añadir etiquetas con los valores en las barras
+for bar in bars:
+    width = bar.get_width()
+    ax.text(width + 0.006, bar.get_y() + bar.get_height()/2, f'{width:.3f}', 
+            va='center', ha='left', fontsize=18, fontweight='bold')
+
+ax.set_xlim(0, max(importances) * 1.25)
+
+# Opcional: limpiar los bordes del cuadro para que se vea más integrado al cartel
+for spine in ['top', 'right']:
+    ax.spines[spine].set_visible(False)
+
+plt.tight_layout()
+
+# 4. Guardar imagen
+ruta_imagen_fi = os.path.join("data", "importancia_variables.png")
+plt.savefig(ruta_imagen_fi, dpi=300, facecolor=fig.get_facecolor(), edgecolor='none')
+print(f"✅ Gráfico con fondo personalizado guardado en: {ruta_imagen_fi}")
+plt.show()
